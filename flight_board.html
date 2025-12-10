@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Homecoming Board - Gesture-Controlled Flight Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0a1628 0%, #1a2844 50%, #0f1b30 100%);
+            color: #e0f4ff;
+            overflow: hidden;
+            height: 100vh;
+            position: relative;
+        }
+
+        /* Snowfall Animation */
+        .snowflake {
+            position: absolute;
+            top: -10px;
+            color: white;
+            font-size: 1em;
+            opacity: 0.8;
+            animation: fall linear infinite;
+            user-select: none;
+            pointer-events: none;
+        }
+
+        @keyframes fall {
+            to {
+                transform: translateY(100vh);
+            }
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 3em;
+            background: linear-gradient(90deg, #4fc3f7, #81d4fa, #b3e5fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px rgba(79, 195, 247, 0.3);
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            color: #81d4fa;
+            font-weight: 300;
+        }
+
+        .main-content {
+            display: flex;
+            gap: 20px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* Flight Board */
+        .flight-board {
+            flex: 1;
+            background: rgba(15, 27, 48, 0.6);
+            border-radius: 20px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(129, 212, 250, 0.2);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .board-header {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #4fc3f7;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            font-size: 0.6em;
+            padding: 5px 15px;
+            background: rgba(76, 175, 80, 0.3);
+            border-radius: 20px;
+            border: 1px solid #4caf50;
+        }
+
+        .status-indicator.loading {
+            background: rgba(255, 193, 7, 0.3);
+            border-color: #ffc107;
+        }
+
+        .flights-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 10px;
+            scrollbar-width: thin;
+            scrollbar-color: #4fc3f7 rgba(79, 195, 247, 0.1);
+        }
+
+        .flights-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .flights-container::-webkit-scrollbar-track {
+            background: rgba(79, 195, 247, 0.1);
+            border-radius: 10px;
+        }
+
+        .flights-container::-webkit-scrollbar-thumb {
+            background: #4fc3f7;
+            border-radius: 10px;
+        }
+
+        .flight-card {
+            background: rgba(26, 40, 68, 0.7);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(129, 212, 250, 0.3);
+            transition: all 0.3s ease;
+            backdrop-filter: blur(5px);
+        }
+
+        .flight-card:hover {
+            transform: translateX(5px);
+            border-color: #4fc3f7;
+            box-shadow: 0 5px 20px rgba(79, 195, 247, 0.3);
+        }
+
+        .flight-card.selected {
+            background: rgba(79, 195, 247, 0.2);
+            border: 2px solid #4fc3f7;
+            box-shadow: 0 0 30px rgba(79, 195, 247, 0.5);
+            transform: scale(1.02);
+        }
+
+        .flight-callsign {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #81d4fa;
+            margin-bottom: 10px;
+        }
+
+        .flight-info {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.95em;
+            color: #b3e5fc;
+        }
+
+        .flight-detail {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .label {
+            font-size: 0.8em;
+            color: #4fc3f7;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Camera Feed */
+        .camera-section {
+            width: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .camera-feed {
+            background: rgba(15, 27, 48, 0.8);
+            border-radius: 20px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(129, 212, 250, 0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+
+        .camera-title {
+            font-size: 1.2em;
+            color: #4fc3f7;
+            margin-bottom: 15px;
+            text-align: center;
+        }
+
+        .video-container {
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #videoElement {
+            width: 100%;
+            height: auto;
+            display: block;
+            transform: scaleX(-1); /* Mirror the video */
+        }
+
+        #canvasElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1); /* Mirror the canvas */
+        }
+
+        .gesture-info {
+            background: rgba(15, 27, 48, 0.8);
+            border-radius: 20px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(129, 212, 250, 0.2);
+        }
+
+        .gesture-title {
+            font-size: 1.2em;
+            color: #4fc3f7;
+            margin-bottom: 15px;
+        }
+
+        .gesture-item {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: rgba(26, 40, 68, 0.5);
+            border-radius: 10px;
+            border-left: 3px solid #4fc3f7;
+        }
+
+        .gesture-name {
+            font-weight: bold;
+            color: #81d4fa;
+            margin-bottom: 5px;
+        }
+
+        .gesture-desc {
+            font-size: 0.9em;
+            color: #b3e5fc;
+        }
+
+        .current-gesture {
+            text-align: center;
+            padding: 15px;
+            background: rgba(79, 195, 247, 0.2);
+            border-radius: 10px;
+            margin-top: 15px;
+            font-size: 1.1em;
+            color: #4fc3f7;
+            border: 1px solid #4fc3f7;
+        }
+
+        .error-message {
+            background: rgba(244, 67, 54, 0.2);
+            border: 1px solid #f44336;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 20px;
+            text-align: center;
+            color: #ffcdd2;
+        }
+
+        @media (max-width: 1200px) {
+            .main-content {
+                flex-direction: column;
+            }
+            .camera-section {
+                width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Snowfall container -->
+    <div id="snow-container"></div>
+
+    <div class="container">
+        <header>
+            <h1>✈️ The Homecoming Board</h1>
+            <p class="subtitle">Gesture-Controlled Flight Tracker</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Flight Board -->
+            <div class="flight-board">
+                <div class="board-header">
+                    <span>Winter Festival Arrivals</span>
+                    <span class="status-indicator loading" id="statusIndicator">Loading...</span>
+                </div>
+                <div class="flights-container" id="flightsContainer">
+                    <!-- Flights will be populated here -->
+                </div>
+            </div>
+
+            <!-- Camera Feed -->
+            <div class="camera-section">
+                <div class="camera-feed">
+                    <div class="camera-title">📹 Hand Tracking</div>
+                    <div class="video-container">
+                        <video id="videoElement" autoplay playsinline></video>
+                        <canvas id="canvasElement"></canvas>
+                    </div>
+                </div>
+
+                <div class="gesture-info">
+                    <div class="gesture-title">Gesture Controls</div>
+                    <div class="gesture-item">
+                        <div class="gesture-name">👆 Scroll</div>
+                        <div class="gesture-desc">Move hand up/down to scroll flights</div>
+                    </div>
+                    <div class="gesture-item">
+                        <div class="gesture-name">✊ Select</div>
+                        <div class="gesture-desc">Close fist to highlight top flight</div>
+                    </div>
+                    <div class="current-gesture" id="currentGesture">
+                        Waiting for hand...
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==================== SNOWFALL ANIMATION ====================
+        function createSnowfall() {
+            const container = document.getElementById('snow-container');
+            const snowflakeCount = 50;
+            
+            for (let i = 0; i < snowflakeCount; i++) {
+                const snowflake = document.createElement('div');
+                snowflake.className = 'snowflake';
+                snowflake.innerHTML = '❄';
+                snowflake.style.left = Math.random() * 100 + '%';
+                snowflake.style.animationDuration = (Math.random() * 3 + 2) + 's';
+                snowflake.style.animationDelay = Math.random() * 5 + 's';
+                snowflake.style.fontSize = (Math.random() * 10 + 10) + 'px';
+                snowflake.style.opacity = Math.random() * 0.6 + 0.4;
+                container.appendChild(snowflake);
+            }
+        }
+
+        // ==================== FLIGHT DATA ====================
+        const mockFlights = [
+            { callsign: 'WF001', origin: 'Iceland', status: 'Arriving', altitude: 35000 },
+            { callsign: 'WF002', origin: 'Norway', status: 'Arriving', altitude: 32000 },
+            { callsign: 'WF003', origin: 'Finland', status: 'Arriving', altitude: 38000 },
+            { callsign: 'WF004', origin: 'Canada', status: 'Arriving', altitude: 36000 },
+            { callsign: 'WF005', origin: 'Russia', status: 'Arriving', altitude: 34000 },
+            { callsign: 'WF006', origin: 'Sweden', status: 'Arriving', altitude: 33000 },
+            { callsign: 'WF007', origin: 'Greenland', status: 'Arriving', altitude: 37000 },
+            { callsign: 'WF008', origin: 'Alaska', status: 'Arriving', altitude: 35500 },
+            { callsign: 'WF009', origin: 'Denmark', status: 'Arriving', altitude: 31000 },
+            { callsign: 'WF010', origin: 'Scotland', status: 'Arriving', altitude: 29000 },
+        ];
+
+        let flights = [];
+        let selectedFlightIndex = -1;
+        let lastScrollY = null;
+
+        async function fetchFlights() {
+            const statusIndicator = document.getElementById('statusIndicator');
+            statusIndicator.textContent = 'Loading...';
+            statusIndicator.className = 'status-indicator loading';
+
+            try {
+                // Try to fetch from OpenSky Network API
+                // Using bounds for London area
+                const lamin = 51.28;
+                const lomin = -0.51;
+                const lamax = 51.68;
+                const lomax = 0.33;
+                
+                const response = await fetch(
+                    `https://opensky-network.org/api/states/all?lamin=${lamin}&lomin=${lomin}&lamax=${lamax}&lomax=${lomax}`
+                );
+
+                if (!response.ok) throw new Error('API request failed');
+
+                const data = await response.json();
+                
+                if (data.states && data.states.length > 0) {
+                    flights = data.states.slice(0, 15).map(state => ({
+                        callsign: (state[1] || 'N/A').trim(),
+                        origin: state[2] || 'Unknown',
+                        status: 'Arriving',
+                        altitude: state[7] ? Math.round(state[7] * 3.28084) : 'N/A', // Convert meters to feet
+                        velocity: state[9] ? Math.round(state[9] * 1.94384) : 'N/A' // Convert m/s to knots
+                    }));
+                    
+                    statusIndicator.textContent = 'Live Data';
+                    statusIndicator.className = 'status-indicator';
+                } else {
+                    throw new Error('No flights in area');
+                }
+            } catch (error) {
+                console.log('Using fallback data:', error.message);
+                flights = mockFlights;
+                statusIndicator.textContent = 'Mock Data';
+                statusIndicator.className = 'status-indicator';
+            }
+
+            renderFlights();
+        }
+
+        function renderFlights() {
+            const container = document.getElementById('flightsContainer');
+            container.innerHTML = '';
+
+            flights.forEach((flight, index) => {
+                const card = document.createElement('div');
+                card.className = 'flight-card';
+                if (index === selectedFlightIndex) {
+                    card.classList.add('selected');
+                }
+
+                card.innerHTML = `
+                    <div class="flight-callsign">${flight.callsign}</div>
+                    <div class="flight-info">
+                        <div class="flight-detail">
+                            <span class="label">Origin</span>
+                            <span>${flight.origin}</span>
+                        </div>
+                        <div class="flight-detail">
+                            <span class="label">Status</span>
+                            <span>${flight.status}</span>
+                        </div>
+                        <div class="flight-detail">
+                            <span class="label">Altitude</span>
+                            <span>${flight.altitude} ft</span>
+                        </div>
+                    </div>
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        // ==================== MEDIAPIPE HANDS SETUP ====================
+        const videoElement = document.getElementById('videoElement');
+        const canvasElement = document.getElementById('canvasElement');
+        const canvasCtx = canvasElement.getContext('2d');
+        const currentGestureDisplay = document.getElementById('currentGesture');
+
+        function onResults(results) {
+            // Set canvas dimensions to match video
+            canvasElement.width = videoElement.videoWidth;
+            canvasElement.height = videoElement.videoHeight;
+
+            // Clear canvas
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    // Draw hand skeleton
+                    drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
+                        color: '#4fc3f7',
+                        lineWidth: 2
+                    });
+                    drawLandmarks(canvasCtx, landmarks, {
+                        color: '#81d4fa',
+                        fillColor: '#4fc3f7',
+                        lineWidth: 1,
+                        radius: 3
+                    });
+
+                    // Detect gestures
+                    detectGestures(landmarks);
+                }
+            } else {
+                currentGestureDisplay.textContent = 'Waiting for hand...';
+                lastScrollY = null;
+            }
+
+            canvasCtx.restore();
+        }
+
+        // Gesture Detection
+        function detectGestures(landmarks) {
+            // Get key points
+            const indexTip = landmarks[8]; // Index finger tip
+            const indexMCP = landmarks[5]; // Index finger base
+            const thumbTip = landmarks[4];
+            const middleTip = landmarks[12];
+            const ringTip = landmarks[16];
+            const pinkyTip = landmarks[20];
+            const wrist = landmarks[0];
+
+            // Calculate distances to detect closed fist
+            const thumbToIndex = distance(thumbTip, indexTip);
+            const indexToMiddle = distance(indexTip, middleTip);
+            const middleToRing = distance(middleTip, ringTip);
+            const ringToPinky = distance(ringTip, pinkyTip);
+
+            // Closed fist detection (all fingers close together)
+            const isFist = thumbToIndex < 0.15 && 
+                          indexToMiddle < 0.1 && 
+                          middleToRing < 0.1 && 
+                          ringToPinky < 0.1;
+
+            if (isFist) {
+                // Select top flight
+                currentGestureDisplay.textContent = '✊ Fist Detected - Selecting!';
+                selectTopFlight();
+            } else {
+                // Scroll gesture based on index finger Y position
+                currentGestureDisplay.textContent = '👆 Scrolling Mode';
+                handleScrollGesture(indexTip.y);
+            }
+        }
+
+        function distance(point1, point2) {
+            const dx = point1.x - point2.x;
+            const dy = point1.y - point2.y;
+            const dz = (point1.z || 0) - (point2.z || 0);
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+
+        function handleScrollGesture(currentY) {
+            if (lastScrollY === null) {
+                lastScrollY = currentY;
+                return;
+            }
+
+            const deltaY = currentY - lastScrollY;
+            const scrollSpeed = 500; // Pixels per unit of hand movement
+
+            // If hand moves UP (currentY decreases), scroll DOWN
+            // If hand moves DOWN (currentY increases), scroll UP
+            const scrollAmount = -deltaY * scrollSpeed;
+
+            const container = document.getElementById('flightsContainer');
+            container.scrollTop += scrollAmount;
+
+            lastScrollY = currentY;
+        }
+
+        function selectTopFlight() {
+            const container = document.getElementById('flightsContainer');
+            const scrollTop = container.scrollTop;
+            const cards = container.querySelectorAll('.flight-card');
+            
+            // Find the first visible card
+            let topVisibleIndex = 0;
+            for (let i = 0; i < cards.length; i++) {
+                const cardTop = cards[i].offsetTop;
+                if (cardTop >= scrollTop) {
+                    topVisibleIndex = i;
+                    break;
+                }
+            }
+
+            selectedFlightIndex = topVisibleIndex;
+            renderFlights();
+        }
+
+        // Initialize MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        // Setup camera
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({ image: videoElement });
+            },
+            width: 640,
+            height: 480
+        });
+
+        // ==================== INITIALIZATION ====================
+        async function init() {
+            createSnowfall();
+            await fetchFlights();
+            
+            try {
+                await camera.start();
+                console.log('Camera started successfully');
+            } catch (error) {
+                console.error('Camera error:', error);
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.textContent = '⚠️ Camera access denied or not available. Gesture controls disabled.';
+                document.querySelector('.camera-feed').appendChild(errorDiv);
+            }
+
+            // Refresh flight data every 60 seconds
+            setInterval(fetchFlights, 60000);
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
